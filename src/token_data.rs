@@ -53,6 +53,13 @@ pub enum TokenType {
     NotFound,
 }
 
+#[derive(Debug, PartialEq)]
+pub enum Mode {
+    Normal,
+    StringLiteral,
+    Integer,
+    Comment,
+}
 
 #[derive(Debug)]
 pub struct Token {

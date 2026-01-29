@@ -1,6 +1,2 @@
-a + b = c
-k = "hello world"
-b = 1238 + 3456
-if a = b {
-  print (a)
-}
+""
+638292
