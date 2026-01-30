@@ -1,8 +1,8 @@
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum TokenType {
     // Special
-    Illegal,      // For characters the lexer doesn't recognize
-    Eof,          // End of File
+    Illegal, // For characters the lexer doesn't recognize
+    Eof,     // End of File
 
     // Identifiers & Literals
     Identifier,    // variable names, function names
@@ -10,36 +10,36 @@ pub enum TokenType {
     StringLiteral, // "hello"
 
     // Assignment Operators
-    Assign,        // =
-    PlusAssign,    // +=
-    MinusAssign,   // -=
+    Assign,      // =
+    PlusAssign,  // +=
+    MinusAssign, // -=
 
     // Comparison Operators
-    Equal,         // ==
-    NotEqual,      // !=
-    Less,          // <
-    LessEqual,     // <=
-    Greater,       // >
-    GreaterEqual,  // >=
+    Equal,        // ==
+    NotEqual,     // !=
+    Less,         // <
+    LessEqual,    // <=
+    Greater,      // >
+    GreaterEqual, // >=
 
     // Mathematical Operators
-    Plus,          // +
-    Minus,         // -
-    Asterisk,      // *
-    Slash,         // /
+    Plus,     // +
+    Minus,    // -
+    Asterisk, // *
+    Slash,    // /
 
     // Logical Operators
-    And,           // &&
-    Or,            // ||
-    Bang,          // !
+    And,  // &&
+    Or,   // ||
+    Bang, // !
 
     // Delimiters (The "Glue" of syntax)
-    Comma,         // ,
-    Semicolon,     // ;
-    LeftParen,     // (
-    RightParen,    // )
-    LeftBrace,     // {
-    RightBrace,    // }
+    Comma,      // ,
+    Semicolon,  // ;
+    LeftParen,  // (
+    RightParen, // )
+    LeftBrace,  // {
+    RightBrace, // }
 
     // Keywords
     Function,
@@ -59,6 +59,7 @@ pub enum Mode {
     StringLiteral,
     Integer,
     Comment,
+    Identifier,
 }
 
 #[derive(Debug)]
@@ -69,3 +70,17 @@ pub struct Token {
     pub position: i32,
 }
 
+pub fn get_token(bytes: &[u8]) -> (Option<TokenType>, String) {
+    let value = unsafe { std::str::from_utf8_unchecked(bytes) }.to_string();
+    let token_type = match bytes {
+        b"function" => Some(TokenType::Function),
+        b"if"       => Some(TokenType::If),
+        b"else"     => Some(TokenType::Else),
+        b"for"      => Some(TokenType::For),
+        b"while"    => Some(TokenType::While),
+        b"return"   => Some(TokenType::Return),
+        _           => None,
+    };
+
+    (token_type, value)
+}

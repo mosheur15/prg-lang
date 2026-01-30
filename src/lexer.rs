@@ -1,5 +1,4 @@
-use crate::token_data::{TokenType, Token, Mode};
-
+use crate::token_data::{Mode, Token, TokenType, get_token};
 
 #[derive(Debug)]
 pub struct File {
@@ -14,43 +13,40 @@ impl File {
             tokens: vec![],
         }
     }
-    
 
-    pub fn tokenize(&mut self){
+    pub fn tokenize(&mut self) {
         let data = self.raw.as_bytes();
         let mut mode = Mode::Normal;
         let mut count = 0;
 
         let mut str_start = 0;
         let mut int_start = 0;
+        let mut id_start = 0;
 
         while count < data.len() {
             match mode {
                 // handle logic for String mode.
-                Mode::StringLiteral => {
-                    match data[count] {
-                        b'"' => {
-                            if data[count-1] != b'\\' {
-                                mode = Mode::Normal;
-                                let value = &data[str_start..count];
-                                count += 1;
-                                self.tokens.push(Token {
-                                    token_type: TokenType::StringLiteral,
-                                    value: unsafe {std::str::from_utf8_unchecked(&value)}.to_string(),
-                                    line: 0,
-                                    position: str_start as i32,
-                                });
-                            }
-                            else {
-                                count += 1;
-                            }
-                        }
-                        _ => {
+                Mode::StringLiteral => match data[count] {
+                    b'"' => {
+                        if data[count - 1] != b'\\' {
+                            mode = Mode::Normal;
+                            let value = &data[str_start..count];
+                            count += 1;
+                            self.tokens.push(Token {
+                                token_type: TokenType::StringLiteral,
+                                value: unsafe { std::str::from_utf8_unchecked(&value) }.to_string(),
+                                line: 0,
+                                position: str_start as i32,
+                            });
+                        } else {
                             count += 1;
                         }
                     }
-                }
-                
+                    _ => {
+                        count += 1;
+                    }
+                },
+
                 // handle Integer mode.
                 Mode::Integer => {
                     match data[count] {
@@ -58,8 +54,8 @@ impl File {
                         b'0'..=b'9' => {
                             count += 1;
                         }
-                        
-                        // change mode to normal and collect the Integer if the 
+
+                        // change mode to normal and collect the Integer if the
                         // byte is space or newline.
                         b' ' | b'\n' => {
                             mode = Mode::Normal;
@@ -67,17 +63,58 @@ impl File {
                             count += 1;
                             self.tokens.push(Token {
                                 token_type: TokenType::Integer,
-                                value: unsafe {std::str::from_utf8_unchecked(value)}.to_string(),
+                                value: unsafe { std::str::from_utf8_unchecked(value) }.to_string(),
                                 line: 0,
                                 position: int_start as i32,
                             });
                         }
                         _ => {
-                            println!("illegal integer {} at position {}",
-                                unsafe{std::str::from_utf8_unchecked(&data[count..count+1])}.to_string(),
+                            println!(
+                                "illegal integer {} at position {}",
+                                unsafe { std::str::from_utf8_unchecked(&data[count..count + 1]) }
+                                    .to_string(),
                                 count
                             );
                             std::process::exit(2);
+                        }
+                    }
+                }
+
+                // identifier mode.
+                Mode::Identifier => {
+                    match data[count] {
+                        b' ' | b'\n' => {
+                            let (tokentype, value) = get_token(&data[id_start..count]);
+                            // println!("{:#?} {}", tokentype.clone().unwrap(), value);
+                            match tokentype {
+                                // handle keywords.
+                                Some(t) => {
+                                    mode = Mode::Normal;
+                                    count += 1;
+                                    self.tokens.push(Token {
+                                        token_type: t,
+                                        value: value,
+                                        line: 0,
+                                        position: count as i32,
+                                    });
+                                }
+
+                                // handle identifiers
+                                None => {
+                                    mode = Mode::Normal;
+                                    count += 1;
+                                    self.tokens.push(Token {
+                                        token_type: TokenType::Identifier,
+                                        value: value,
+                                        line: 0,
+                                        position: count as i32,
+                                    });
+                                }
+                            }
+                        }
+
+                        _ => {
+                            count += 1;
                         }
                     }
                 }
@@ -99,19 +136,28 @@ impl File {
                             count += 1;
                         }
 
+                        // if the byte is a-z A-Z enter identifier mode to
+                        // handle identifiers and keywords.
+                        b'a'..=b'z' | b'A'..=b'Z' => {
+                            mode = Mode::Identifier;
+                            id_start = count;
+                            count += 1;
+                        }
+
                         _ => {
                             count += 1;
                         }
                     }
                 }
             }
-        };
-        
+        }
+
         // Handle not closed modes.
         if mode == Mode::Integer {
             self.tokens.push(Token {
                 token_type: TokenType::Integer,
-                value: unsafe{std::str::from_utf8_unchecked(&data[int_start..count])}.to_string(),
+                value: unsafe { std::str::from_utf8_unchecked(&data[int_start..count]) }
+                    .to_string(),
                 line: 0,
                 position: count as i32,
             });
