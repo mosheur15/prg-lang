@@ -1,13 +1,12 @@
 #![allow(unused)]
 mod lexer;
-mod token_data;
 
 use std::{fs, process::exit};
 use lexer::File;
 
-fn readfile(filename: &str) -> String {
-    match fs::read_to_string(filename) {
-        Ok(content) => { return content.trim().to_string() }
+fn readfile(filename: &str) -> Vec<u8> {
+    match fs::read(filename) {
+        Ok(content) => content,
         Err(e) => {
             println!("Cannot read '{}' : {}", filename, e.to_string());
             exit(404);

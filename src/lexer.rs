@@ -1,167 +1,349 @@
-use crate::token_data::{Mode, Token, TokenType, get_token};
+#[derive(Debug, Clone)]
+pub enum TokenType {
+    // Special
+    Eof, // End of File
+
+    // Identifiers & Literals
+    Identifier,    // variable names, function names
+    Integer,       // 123
+    StringLiteral, // "hello"
+
+    // Assignment Operators
+    Assign,      // =
+    PlusAssign,  // +=
+    MinusAssign, // -=
+
+    // Comparison Operators
+    Equal,        // ==
+    NotEqual,     // !=
+    Less,         // <
+    LessEqual,    // <=
+    Greater,      // >
+    GreaterEqual, // >=
+
+    // Mathematical Operators
+    Plus,     // +
+    Minus,    // -
+    Asterisk, // *
+    Slash,    // /
+
+    // Logical Operators
+    And,  // &&
+    Or,   // ||
+    Bang, // !
+
+    // Delimiters (The "Glue" of syntax)
+    Comma,       // ,
+    Semicolon,   // ;
+    LeftParen,   // (
+    RightParen,  // )
+    LeftBrace,   // {
+    RightBrace,  // }
+    LeftSquare,  // [
+    RightSquare, // ]
+
+    // Keywords
+    True,
+    False,
+    Function,
+    If,
+    Else,
+    For,
+    While,
+    Return,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Mode {
+    Normal,
+    StringLiteral,
+    Integer,
+    Comment,
+    Identifier,
+}
+
+#[derive(Debug)]
+pub struct Token {
+    pub token_type: TokenType,
+    pub start: usize,
+    pub end: usize,
+    pub line: usize,
+}
+
+pub fn get_token(bytes: &[u8]) -> (Option<TokenType>, String) {
+    let value = unsafe { std::str::from_utf8_unchecked(bytes) }.to_string();
+    let token_type = match bytes {
+        // keywords.
+        b"function" => Some(TokenType::Function),
+        b"if" => Some(TokenType::If),
+        b"else" => Some(TokenType::Else),
+        b"for" => Some(TokenType::For),
+        b"while" => Some(TokenType::While),
+        b"return" => Some(TokenType::Return),
+        b"true" => Some(TokenType::True),
+        b"false" => Some(TokenType::False),
+        _ => None,
+    };
+    (token_type, value)
+}
 
 #[derive(Debug)]
 pub struct File {
-    raw: String,
+    raw: Vec<u8>,
     tokens: Vec<Token>,
+    cursor: usize,
+    line: usize,
 }
 
 impl File {
-    pub fn new(raw_data: String) -> Self {
+    pub fn new(raw_data: Vec<u8>) -> Self {
         Self {
             raw: raw_data,
             tokens: vec![],
+            cursor: 0,
+            line: 1,
         }
     }
 
     pub fn tokenize(&mut self) {
-        let data = self.raw.as_bytes();
         let mut mode = Mode::Normal;
-        let mut count = 0;
-
-        let mut str_start = 0;
         let mut int_start = 0;
-        let mut id_start = 0;
 
-        while count < data.len() {
+        while self.cursor < self.raw.len() {
             match mode {
-                // handle logic for String mode.
-                Mode::StringLiteral => match data[count] {
-                    b'"' => {
-                        if data[count - 1] != b'\\' {
-                            mode = Mode::Normal;
-                            let value = &data[str_start..count];
-                            count += 1;
-                            self.tokens.push(Token {
-                                token_type: TokenType::StringLiteral,
-                                value: unsafe { std::str::from_utf8_unchecked(&value) }.to_string(),
-                                line: 0,
-                                position: str_start as i32,
-                            });
-                        } else {
-                            count += 1;
-                        }
-                    }
-                    _ => {
-                        count += 1;
-                    }
-                },
-
-                // handle Integer mode.
-                Mode::Integer => {
-                    match data[count] {
-                        // check if the byte is a digit 0-9.
-                        b'0'..=b'9' => {
-                            count += 1;
+                // Normal mode checks each char and tokenize them Or changes the
+                // Mode to something else accordingly yo handle conplex tokens.
+                Mode::Normal => {
+                    match self.raw[self.cursor] {
+                        // increase the line number in self.line.
+                        // IMPORTANT: make sure all the other modes doesn't consume the
+                        // newline character to preserve your sanity later on while debugging.
+                        b'\n' => {
+                            self.line += 1;
+                            self.cursor += 1;
                         }
 
-                        // change mode to normal and collect the Integer if the
-                        // byte is space or newline.
-                        b' ' | b'\n' => {
-                            mode = Mode::Normal;
-                            let value = &data[int_start..count];
-                            count += 1;
-                            self.tokens.push(Token {
-                                token_type: TokenType::Integer,
-                                value: unsafe { std::str::from_utf8_unchecked(value) }.to_string(),
-                                line: 0,
-                                position: int_start as i32,
-                            });
+                        // ignore space and tabs
+                        b' ' | b'\t' => {
+                            self.cursor += 1;
                         }
-                        _ => {
-                            println!(
-                                "illegal integer {} at position {}",
-                                unsafe { std::str::from_utf8_unchecked(&data[count..count + 1]) }
-                                    .to_string(),
-                                count
-                            );
-                            std::process::exit(2);
-                        }
-                    }
-                }
 
-                // identifier mode.
-                Mode::Identifier => {
-                    match data[count] {
-                        b' ' | b'\n' => {
-                            let (tokentype, value) = get_token(&data[id_start..count]);
-                            // println!("{:#?} {}", tokentype.clone().unwrap(), value);
-                            match tokentype {
-                                // handle keywords.
-                                Some(t) => {
-                                    mode = Mode::Normal;
-                                    count += 1;
-                                    self.tokens.push(Token {
-                                        token_type: t,
-                                        value: value,
-                                        line: 0,
-                                        position: count as i32,
-                                    });
-                                }
-
-                                // handle identifiers
-                                None => {
-                                    mode = Mode::Normal;
-                                    count += 1;
-                                    self.tokens.push(Token {
-                                        token_type: TokenType::Identifier,
-                                        value: value,
-                                        line: 0,
-                                        position: count as i32,
-                                    });
-                                }
+                        // tokenize simple 1-2 character tokens.
+                        // =, +=, -=
+                        b'=' => {
+                            if self.raw[self.cursor + 1] == b'=' {
+                                self.tokens.push(Token {
+                                    token_type: TokenType::Equal,
+                                    start: self.cursor,
+                                    end: self.cursor + 1,
+                                    line: self.line,
+                                });
+                                self.cursor += 2;
+                            } else {
+                                self.tokens.push(Token {
+                                    token_type: TokenType::Assign,
+                                    start: self.cursor,
+                                    end: self.cursor + 1,
+                                    line: self.line,
+                                });
+                                self.cursor += 1;
                             }
                         }
 
+                        b'+' => {
+                            if self.raw[self.cursor + 1] == b'=' {
+                                self.tokens.push(Token {
+                                    token_type: TokenType::PlusAssign,
+                                    start: self.cursor,
+                                    end: self.cursor + 1,
+                                    line: self.line,
+                                });
+                                self.cursor += 2;
+                            } else {
+                                self.tokens.push(Token {
+                                    token_type: TokenType::Plus,
+                                    start: self.cursor,
+                                    end: self.cursor + 1,
+                                    line: self.line,
+                                });
+                                self.cursor += 1;
+                            }
+                        }
+
+                        b'-' => {
+                            if self.raw[self.cursor + 1] == b'=' {
+                                self.tokens.push(Token {
+                                    token_type: TokenType::MinusAssign,
+                                    start: self.cursor,
+                                    end: self.cursor + 1,
+                                    line: self.line,
+                                });
+                                self.cursor += 2;
+                            } else {
+                                self.tokens.push(Token {
+                                    token_type: TokenType::Minus,
+                                    start: self.cursor,
+                                    end: self.cursor + 1,
+                                    line: self.line,
+                                });
+                                self.cursor += 1;
+                            }
+                        }
+
+                        b'<' => {
+                            if self.raw[self.cursor + 1] == b'=' {
+                                self.tokens.push(Token {
+                                    token_type: TokenType::LessEqual,
+                                    start: self.cursor,
+                                    end: self.cursor + 1,
+                                    line: self.line,
+                                });
+                                self.cursor += 2;
+                            } else {
+                                self.tokens.push(Token {
+                                    token_type: TokenType::Less,
+                                    start: self.cursor,
+                                    end: self.cursor + 1,
+                                    line: self.line,
+                                });
+                                self.cursor += 1;
+                            }
+                        }
+
+                        b'>' => {
+                            if self.raw[self.cursor + 1] == b'=' {
+                                self.tokens.push(Token {
+                                    token_type: TokenType::GreaterEqual,
+                                    start: self.cursor,
+                                    end: self.cursor + 1,
+                                    line: self.line,
+                                });
+                                self.cursor += 2;
+                            } else {
+                                self.tokens.push(Token {
+                                    token_type: TokenType::Greater,
+                                    start: self.cursor,
+                                    end: self.cursor + 1,
+                                    line: self.line,
+                                });
+                                self.cursor += 1;
+                            }
+                        }
+
+                        b'*' => {
+                            self.tokens.push(Token {
+                                token_type: TokenType::Asterisk,
+                                start: self.cursor,
+                                end: self.cursor + 1,
+                                line: self.line,
+                            });
+                            self.cursor += 1;
+                        }
+
+                        b'/' => {
+                            self.tokens.push(Token {
+                                token_type: TokenType::Slash,
+                                start: self.cursor,
+                                end: self.cursor + 1,
+                                line: self.line,
+                            });
+                            self.cursor += 1;
+                        }
+
+                        b',' => {
+                            self.tokens.push(Token {
+                                token_type: TokenType::Comma,
+                                start: self.cursor,
+                                end: self.cursor + 1,
+                                line: self.line,
+                            });
+                            self.cursor += 1;
+                        }
+
+                        b';' => {
+                            self.tokens.push(Token {
+                                token_type: TokenType::Semicolon,
+                                start: self.cursor,
+                                end: self.cursor + 1,
+                                line: self.line,
+                            });
+                            self.cursor += 1;
+                        }
+
+                        b'(' => {
+                            self.tokens.push(Token {
+                                token_type: TokenType::LeftParen,
+                                start: self.cursor,
+                                end: self.cursor + 1,
+                                line: self.line,
+                            });
+                            self.cursor += 1;
+                        }
+
+                        b')' => {
+                            self.tokens.push(Token {
+                                token_type: TokenType::RightParen,
+                                start: self.cursor,
+                                end: self.cursor + 1,
+                                line: self.line,
+                            });
+                            self.cursor += 1;
+                        }
+
+                        b'{' => {
+                            self.tokens.push(Token {
+                                token_type: TokenType::LeftBrace,
+                                start: self.cursor,
+                                end: self.cursor + 1,
+                                line: self.line,
+                            });
+                            self.cursor += 1;
+                        }
+
+                        b'}' => {
+                            self.tokens.push(Token {
+                                token_type: TokenType::RightBrace,
+                                start: self.cursor,
+                                end: self.cursor + 1,
+                                line: self.line,
+                            });
+                            self.cursor += 1;
+                        }
+
+                        b'[' => {
+                            self.tokens.push(Token {
+                                token_type: TokenType::LeftSquare,
+                                start: self.cursor,
+                                end: self.cursor + 1,
+                                line: self.line,
+                            });
+                            self.cursor += 1;
+                        }
+
+                        b']' => {
+                            self.tokens.push(Token {
+                                token_type: TokenType::RightSquare,
+                                start: self.cursor,
+                                end: self.cursor + 1,
+                                line: self.line,
+                            });
+                            self.cursor += 1;
+                        }
+
                         _ => {
-                            count += 1;
+                            self.cursor += 1;
                         }
                     }
                 }
 
-                // Normal mode.
                 _ => {
-                    match data[count] {
-                        // if theres double quotes enter string mode.
-                        b'"' => {
-                            mode = Mode::StringLiteral;
-                            count += 1;
-                            str_start = count;
-                        }
-
-                        // if theres number 0-9 enter Integer mode.
-                        b'0'..=b'9' => {
-                            mode = Mode::Integer;
-                            int_start = count;
-                            count += 1;
-                        }
-
-                        // if the byte is a-z A-Z enter identifier mode to
-                        // handle identifiers and keywords.
-                        b'a'..=b'z' | b'A'..=b'Z' => {
-                            mode = Mode::Identifier;
-                            id_start = count;
-                            count += 1;
-                        }
-
-                        _ => {
-                            count += 1;
-                        }
-                    }
+                    println!("Lexer: State machine 'mode' got corrupted at runtime.");
+                    println!("Unknown mode: {:#?}", mode);
+                    std::process::exit(1);
                 }
             }
         }
 
-        // Handle not closed modes.
-        if mode == Mode::Integer {
-            self.tokens.push(Token {
-                token_type: TokenType::Integer,
-                value: unsafe { std::str::from_utf8_unchecked(&data[int_start..count]) }
-                    .to_string(),
-                line: 0,
-                position: count as i32,
-            });
-        }
         println!("{:#?}", self.tokens);
     }
 }
