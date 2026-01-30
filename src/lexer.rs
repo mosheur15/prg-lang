@@ -28,8 +28,8 @@ pub enum TokenType {
     Slash,    // /
 
     // Logical Operators
-    And,  // &&
-    Or,   // ||
+    And,  // &
+    Or,   // |
     Bang, // !
 
     // Delimiters (The "Glue" of syntax)
@@ -87,6 +87,14 @@ pub fn get_token(bytes: &[u8]) -> (Option<TokenType>, String) {
     (token_type, value)
 }
 
+fn getchar_from_bytes(bytes: &[u8], position: usize) -> char {
+    // utf-8 can have a maximum of 4 bytes for multi byte character like 'π'
+    let end_position = (position + 4).min(bytes.len());
+    let data = String::from_utf8_lossy(&bytes[position..end_position]);
+    data.chars().next().unwrap()
+}
+
+
 #[derive(Debug)]
 pub struct File {
     raw: Vec<u8>,
@@ -107,7 +115,9 @@ impl File {
 
     pub fn tokenize(&mut self) {
         let mut mode = Mode::Normal;
+        let mut str_start = 0;
         let mut int_start = 0;
+        let mut id_start  = 0;
 
         while self.cursor < self.raw.len() {
             match mode {
@@ -330,8 +340,74 @@ impl File {
                             self.cursor += 1;
                         }
 
-                        _ => {
+                        
+                        b'&' => {
+                            self.tokens.push(Token {
+                                token_type: TokenType::And,
+                                start: self.cursor,
+                                end: self.cursor + 1,
+                                line: self.line,
+                            });
                             self.cursor += 1;
+                        }
+
+ 
+                        b'|' => {
+                            self.tokens.push(Token {
+                                token_type: TokenType::Or,
+                                start: self.cursor,
+                                end: self.cursor + 1,
+                                line: self.line,
+                            });
+                            self.cursor += 1;
+                        }
+
+ 
+                        b'!' => {
+                            self.tokens.push(Token {
+                                token_type: TokenType::Bang,
+                                start: self.cursor,
+                                end: self.cursor + 1,
+                                line: self.line,
+                            });
+                            self.cursor += 1;
+                        }
+
+
+                        // handle conplex tokens like String, Integer etc. by changing
+                        // the mode accordingly.
+                        
+                        // Enter String mode.
+                        b'"' => {
+                            mode = Mode::StringLiteral;
+                            self.cursor += 1;
+                            // Note: add starting position after the increase so the 
+                            // quote gets skipped.
+                            str_start = self.cursor;
+                        }
+                        
+                        // Enter Integer mode.
+                        b'0'..=b'9' => {
+                            mode = Mode::Integer;
+                            int_start = self.cursor;
+                            self.cursor += 1;
+                        }
+                        
+                        // Enter Identifier Mode.
+                        // Note: Identifier Mode also handles keywords.
+                        b'a'..=b'z' | b'A'..=b'Z' =>{
+                            mode = Mode::Identifier;
+                            id_start = self.cursor;
+                            self.cursor += 1;
+                        }
+
+                        _ => {
+                            println!(
+                                "Lexer: Unknown character '{}' at line {}",
+                                getchar_from_bytes(&self.raw, self.cursor),
+                                self.line
+                            );
+                            std::process::exit(1);
                         }
                     }
                 }
