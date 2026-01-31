@@ -1,3 +1,4 @@
-+-*/==+=-==
->< >= <=
-π hey
+6.4577
+a = hello world;
+if a == 1 :
+  print(hello)

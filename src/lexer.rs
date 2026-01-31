@@ -1,11 +1,14 @@
+use std::process::id;
+
 #[derive(Debug, Clone)]
 pub enum TokenType {
     // Special
     Eof, // End of File
 
     // Identifiers & Literals
-    Identifier,    // variable names, function names
+    Identifier(Vec<u8>),    // variable names, function names
     Integer,       // 123
+    Float,         // 12.3
     StringLiteral, // "hello"
 
     // Assignment Operators
@@ -35,6 +38,7 @@ pub enum TokenType {
     // Delimiters (The "Glue" of syntax)
     Comma,       // ,
     Semicolon,   // ;
+    Colon,       // :
     LeftParen,   // (
     RightParen,  // )
     LeftBrace,   // {
@@ -58,6 +62,7 @@ pub enum Mode {
     Normal,
     StringLiteral,
     Integer,
+    Float,
     Comment,
     Identifier,
 }
@@ -117,6 +122,7 @@ impl File {
         let mut mode = Mode::Normal;
         let mut str_start = 0;
         let mut int_start = 0;
+        let mut float_start = 0;
         let mut id_start  = 0;
 
         while self.cursor < self.raw.len() {
@@ -280,6 +286,16 @@ impl File {
                             self.cursor += 1;
                         }
 
+                        b':' => {
+                            self.tokens.push(Token {
+                                token_type: TokenType::Colon,
+                                start: self.cursor,
+                                end: self.cursor + 1,
+                                line: self.line,
+                            });
+                            self.cursor += 1;
+                        }
+
                         b'(' => {
                             self.tokens.push(Token {
                                 token_type: TokenType::LeftParen,
@@ -402,6 +418,7 @@ impl File {
                         }
 
                         _ => {
+                            // TODO: fix the getchar function for proper utf-8 decoding.
                             println!(
                                 "Lexer: Unknown character '{}' at line {}",
                                 getchar_from_bytes(&self.raw, self.cursor),
@@ -412,12 +429,193 @@ impl File {
                     }
                 }
 
+
+                // String Mode: Tokenize strings.
+                // TODO: add file ending edgecase.
+                Mode::StringLiteral => {
+                    if self.raw[self.cursor] == b'"' && self.raw[self.cursor-1] != b'\\' {
+                        self.tokens.push(Token {
+                            token_type: TokenType::StringLiteral,
+                            start: str_start,
+                            end: self.cursor - 1,
+                            line: self.line,
+                        });
+                        self.cursor += 1;
+                        mode = Mode::Normal;
+                    } else {
+                        self.cursor += 1;
+                    }
+                }
+                
+                // Integer Mode: tokenize Integers. and change mode to float if found dot.
+                // TODO: add eof edgecase.
+                Mode::Integer => {
+                    match self.raw[self.cursor] {
+                        // Enter float mode if encountered a dot in the integer.
+                        b'.' => {
+                            mode = Mode::Float;
+                            float_start = int_start;
+                            self.cursor += 1;
+                        }
+                        
+                        // Tokenize the integer after it ends with a new line.
+                        // IMPORTANT: Don't consume the newline just set the mode to Normal.
+                        // Normal mode needs the newline yo keep track of line numbers.
+                        b'\n' => {
+                            self.tokens.push(Token {
+                                token_type: TokenType::Integer,
+                                start: int_start,
+                                end: self.cursor - 1,
+                                line: self.line,
+                            });
+                            mode = Mode::Normal;
+                        }
+
+                        // Tokenize the Integer after it ends with a space.
+                        b' ' => {
+                            self.tokens.push(Token {
+                                token_type: TokenType::Integer,
+                                start: int_start,
+                                end: self.cursor - 1,
+                                line: self.line,
+                            });
+                            mode = Mode::Normal;
+                            self.cursor += 1;
+                        }
+
+
+                        // continue for valid numbers
+                        b'0'..=b'9' => {
+                            self.cursor += 1;
+                        }
+                        
+                        // exit for everything else.
+                        _ => {
+                            println!(
+                                "Lexer: invalid integer '{}' at line {}",
+                                getchar_from_bytes(&self.raw, self.cursor),
+                                self.line
+                            );
+                            std::process::exit(1);
+                        }
+                    }
+                }
+
+                // Float Mode: tokenize Float.
+                // TODO: add eof edgecase.
+                Mode::Float => {
+                    match self.raw[self.cursor] {
+                        // First dot was already consumed to enter float mode.
+                        // the second one is invalid.
+                        b'.' => {
+                            println!(
+                                "Lexer: too many floating points for integer at line {}",
+                                self.line
+                            );
+                            std::process::exit(1);
+                        }
+                        
+                        // Tokenize the Float after it ends with a new line.
+                        // IMPORTANT: Don't consume the newline just set the mode to Normal.
+                        // Normal mode needs the newline yo keep track of line numbers.
+                        b'\n' => {
+                            self.tokens.push(Token {
+                                token_type: TokenType::Float,
+                                start: float_start,
+                                end: self.cursor - 1,
+                                line: self.line,
+                            });
+                            mode = Mode::Normal;
+                        }
+
+                        // Tokenize the Float after it ends with a space.
+                        b' ' => {
+                            self.tokens.push(Token {
+                                token_type: TokenType::Float,
+                                start: float_start,
+                                end: self.cursor - 1,
+                                line: self.line,
+                            });
+                            mode = Mode::Normal;
+                            self.cursor += 1;
+                        }
+
+
+                        // continue for valid numbers
+                        b'0'..=b'9' => {
+                            self.cursor += 1;
+                        }
+                        
+                        // exit for everything else.
+                        _ => {
+                            println!(
+                                "Lexer: invalid Float '{}' at line {}",
+                                getchar_from_bytes(&self.raw, self.cursor),
+                                self.line
+                            );
+                            std::process::exit(1);
+                        }
+                    }
+                }
+
+                // Identifier Mode: Tokenize Identifiers and keywords.
+                Mode::Identifier => {
+                    match self.raw[self.cursor] {
+                        // NOTE: first character of the Identifier/Keyword has already been 
+                        // consumed by normal mode to enter Identifier mode. starting
+                        // from second character, valid identifier/Keyword name should only have 
+                        // a-z, A-Z, and 0-9 characters.
+                        b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' => {
+                            self.cursor += 1;
+                        }
+
+                        // Tokenize Identifier/keyword after encountering 
+                        // any other characters stated above.
+                        // IMPORTANT: don't consume the character. leave it for normal mode.
+                        _ => {
+                            let (token_type, _) = get_token(&self.raw[id_start..self.cursor-1]);
+                            match token_type {
+                                // Keyword
+                                Some(t) => {
+                                    self.tokens.push(Token {
+                                        token_type: t,
+                                        start: id_start,
+                                        end: self.cursor - 1,
+                                        line: self.line,
+                                    });
+                                    mode = Mode::Normal;
+                                }
+
+                                // identifier
+                                None => {
+                                    self.tokens.push(Token {
+                                        token_type: TokenType::Identifier(self.raw[id_start..self.cursor-1].to_vec()),
+                                        start: id_start,
+                                        end: self.cursor - 1,
+                                        line: self.line,
+                                    });
+                                    mode = Mode::Normal;
+                                }
+                            }
+                        }
+                        
+                    }
+                }
+
                 _ => {
                     println!("Lexer: State machine 'mode' got corrupted at runtime.");
                     println!("Unknown mode: {:#?}", mode);
                     std::process::exit(1);
                 }
             }
+        }
+
+
+        // handle not closed ("String) StringLiteral.
+        // the mode 'Mode::StringLiteral' should still be active if it was not closed.
+        if mode == Mode::StringLiteral {
+            println!("Lexer: StringLiteral did not close.");
+            std::process::exit(1);
         }
 
         println!("{:#?}", self.tokens);
